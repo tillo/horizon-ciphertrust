@@ -1,0 +1,76 @@
+include:
+  - project: mdapi/ci-templates
+    file: /secret-scan.yml
+    ref: main
+
+stages:
+  - build
+  - mirror
+
+secret-scan:
+  extends: .secret-scan
+
+variables:
+  # Bump alongside the Evertrust Helm chart's appVersion; the ASM patch re-derives against whatever
+  # TinkKeyset the base image ships, so this only pins which base image is patched.
+  HORIZON_VERSION: "2.10.2"
+
+# Builds the patched Horizon image. Requires CI/CD variables:
+#   EVERTRUST_REGISTRY_USER / EVERTRUST_REGISTRY_PASSWORD  (pull registry.evertrust.io base image)
+# CI_JOB_TOKEN is passed as a buildkit secret so the in-image Maven build can read
+# ch.tillo.tink:tink-ciphertrust from project 212's package registry.
+buildkit:
+  image:
+    name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/moby/buildkit:rootless
+    entrypoint: [""]
+  stage: build
+  tags:
+    - mdapi
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+    CACHE_IMAGE: $CI_REGISTRY_IMAGE:cache
+  before_script:
+    - mkdir -p ~/.docker
+    - |
+      echo "{
+        \"auths\": {
+          \"${CI_REGISTRY}\": {
+            \"auth\": \"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"
+          },
+          \"registry.evertrust.io\": {
+            \"auth\": \"$(printf "%s:%s" "${EVERTRUST_REGISTRY_USER}" "${EVERTRUST_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"
+          },
+          \"$(echo -n $CI_DEPENDENCY_PROXY_SERVER | awk -F[:] '{print $1}')\": {
+            \"auth\": \"$(printf "%s:%s" ${CI_DEPENDENCY_PROXY_USER} "${CI_DEPENDENCY_PROXY_PASSWORD}" | base64 | tr -d '\n')\"
+          }
+        }
+      }" > ~/.docker/config.json
+  script:
+    - printf '%s' "$CI_JOB_TOKEN" > /tmp/ci_job_token
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt build-arg:HORIZON_VERSION=$HORIZON_VERSION \
+        --secret id=ci_job_token,src=/tmp/ci_job_token \
+        --export-cache type=registry,ref=$CACHE_IMAGE \
+        --import-cache type=registry,ref=$CACHE_IMAGE \
+        --opt platform=linux/amd64 \
+        --output type=image,\"name=$CI_REGISTRY_IMAGE:$HORIZON_VERSION,$CI_REGISTRY_IMAGE:latest\",push=true
+
+# Mirror the built image to zot (the registry Horizon's Helm values would pull from).
+mirror-zot:
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  stage: mirror
+  tags:
+    - mdapi
+  script:
+    - skopeo copy
+        --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
+        --dest-creds "$ZOT_USER:$ZOT_PASSWORD"
+        --dest-tls-verify=false
+        "docker://$CI_REGISTRY_IMAGE:$HORIZON_VERSION"
+        "docker://zot.mdapi.ch/mdapi/horizon-ciphertrust:$HORIZON_VERSION"

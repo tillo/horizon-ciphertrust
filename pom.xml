@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>ch.tillo.tink</groupId>
+  <artifactId>horizon-ciphertrust-hook</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>Horizon CipherTrust vault hook</name>
+  <description>
+    Adds a ciphertrust:// Tink vault master-key scheme to Evertrust Horizon by injecting a call to
+    HorizonCipherTrustHook at the top of models.tink.TinkKeyset.$init$ (bytecode patch), backed by
+    ch.tillo.tink:tink-ciphertrust. Every existing master-key scheme is left byte-for-byte unchanged.
+  </description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>11</maven.compiler.release>
+    <!-- Must match the tink version bundled in the target Horizon image (2.10.x = 1.21.0). -->
+    <tink.version>1.21.0</tink.version>
+  </properties>
+
+  <repositories>
+    <repository>
+      <id>gitlab-tink-ciphertrust</id>
+      <url>https://gitlab.mdapi.ch/api/v4/projects/212/packages/maven</url>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <!-- The extension itself; shipped into /horizon/lib in the image. -->
+    <dependency>
+      <groupId>ch.tillo.tink</groupId>
+      <artifactId>tink-ciphertrust</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+
+    <!-- Present in the Horizon image already — compile-only here. -->
+    <dependency>
+      <groupId>com.google.crypto.tink</groupId>
+      <artifactId>tink</artifactId>
+      <version>${tink.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.scala-lang</groupId>
+      <artifactId>scala-library</artifactId>
+      <version>2.13.14</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Used only by the build-time PatchTinkKeyset tool. -->
+    <dependency>
+      <groupId>org.javassist</groupId>
+      <artifactId>javassist</artifactId>
+      <version>3.30.2-GA</version>
+    </dependency>
+
+    <!-- Horizon's own TinkKeyset / TinkKeysetConfiguration interfaces, compiled against only. The
+         jar is extracted from the target Horizon image at build time; path via -Dhorizon.jar. -->
+    <dependency>
+      <groupId>fr.evertrust</groupId>
+      <artifactId>horizon</artifactId>
+      <version>2.10.2</version>
+      <scope>system</scope>
+      <systemPath>${horizon.jar}</systemPath>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.7.0</version>
+        <executions>
+          <execution>
+            <id>copy-runtime-deps</id>
+            <phase>package</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/deps</outputDirectory>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
