@@ -6,7 +6,7 @@
 
   <groupId>ch.tillo.tink</groupId>
   <artifactId>horizon-ciphertrust-hook</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.2.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <name>Horizon CipherTrust vault hook</name>
@@ -35,7 +35,7 @@
     <dependency>
       <groupId>ch.tillo.tink</groupId>
       <artifactId>tink-ciphertrust</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
+      <version>0.2.0-SNAPSHOT</version>
     </dependency>
 
     <!-- Present in the Horizon image already — compile-only here. -->
@@ -49,6 +49,14 @@
       <groupId>org.scala-lang</groupId>
       <artifactId>scala-library</artifactId>
       <version>2.13.14</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- Horizon ships slf4j-api 2.0.x (logback backend); the hook logs through it so vault
+         master-key initialization is visible in Horizon's own boot log. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.18</version>
       <scope>provided</scope>
     </dependency>
 
@@ -72,6 +80,20 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <!-- Implementation-Title/Version in the manifest: the hook logs them at install so a
+                 running Horizon always tells you exactly which hook build it carries. -->
+            <manifest>
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>

@@ -57,9 +57,45 @@ file `{"username": "...", "password": "..."}` or `{"refresh_token": "..."}` —
 mounted from a Kubernetes secret. Use a dedicated CM service user that owns only
 the KEK.
 
+## Boot behaviour and tuning
+
+Vault initialization is on Horizon's boot path, so the hook is deliberately
+loud: it logs the attempt, the outcome and the elapsed time (with the hook's
+own version) through Horizon's logging. An unreachable CipherTrust Manager
+fails the boot with a clear error within a bounded envelope — by default
+3 attempts × (10 s connect + 30 s request) plus backoff — after which
+Kubernetes restarts the pod and the boot retries; Horizon recovers by itself
+once CM is back.
+
+The envelope can be tuned per deployment (pod env vars, no rebuild):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `CIPHERTRUST_CONNECT_TIMEOUT_MS` | `10000` | TCP/TLS connect timeout |
+| `CIPHERTRUST_REQUEST_TIMEOUT_MS` | `30000` | one full HTTP exchange |
+| `CIPHERTRUST_RETRY_ATTEMPTS` | `3` | tries per call (`1` = no retries) |
+| `CIPHERTRUST_RETRY_BACKOFF_MS` | `300` | first retry delay, doubled per retry |
+
+A malformed value fails vault initialization with a clear message instead of
+being silently ignored.
+
+## Adding another scheme
+
+The hook dispatches through a small internal seam: `VaultSchemeHandler`
+(supports + build-the-KEK-`Aead`), with all scheme-independent work — reading
+Horizon's keyset configuration, unwrapping, installing the vault primitive,
+logging, error shaping — kept in `HorizonCipherTrustHook`. A new scheme (say
+`vault-transit://`) is one handler class plus one entry in
+`HorizonCipherTrustHook.HANDLERS`.
+
 ## Build
 
-CI builds and pushes the image (then mirrors it to `zot.mdapi.ch`). It needs:
+CI builds and pushes the image (then mirrors it to `zot.mdapi.ch`). Every
+build gets two tags: the moving `<HORIZON_VERSION>` and an **immutable**
+`<HORIZON_VERSION>-b<pipeline iid>`. Deployments pin the immutable tag, so a
+rollout is always an explicit tag bump and a rollback is the previous tag —
+rebuilding the same Horizon version can never silently change what a cluster
+runs. It needs:
 
 - `EVERTRUST_REGISTRY_USER` / `EVERTRUST_REGISTRY_PASSWORD` CI/CD variables to
   pull `registry.evertrust.io/horizon:$HORIZON_VERSION`.

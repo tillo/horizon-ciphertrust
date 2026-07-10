@@ -14,6 +14,10 @@ variables:
   # Bump alongside the Evertrust Helm chart's appVersion; the ASM patch re-derives against whatever
   # TinkKeyset the base image ships, so this only pins which base image is patched.
   HORIZON_VERSION: "2.10.2"
+  # Every build also gets an IMMUTABLE tag (<version>-b<pipeline iid>). Deployments pin that tag,
+  # so a rollout is always an explicit tag bump in fleet and a rollback is the previous tag —
+  # rebuilding the same Horizon version can never silently change what the cluster runs.
+  BUILD_TAG: "$HORIZON_VERSION-b$CI_PIPELINE_IID"
 
 # Builds the patched Horizon image. Requires CI/CD variables:
 #   EVERTRUST_REGISTRY_USER / EVERTRUST_REGISTRY_PASSWORD  (pull registry.evertrust.io base image)
@@ -57,9 +61,11 @@ buildkit:
         --export-cache type=registry,ref=$CACHE_IMAGE \
         --import-cache type=registry,ref=$CACHE_IMAGE \
         --opt platform=linux/amd64 \
-        --output type=image,\"name=$CI_REGISTRY_IMAGE:$HORIZON_VERSION,$CI_REGISTRY_IMAGE:latest\",push=true
+        --output type=image,\"name=$CI_REGISTRY_IMAGE:$HORIZON_VERSION,$CI_REGISTRY_IMAGE:$BUILD_TAG,$CI_REGISTRY_IMAGE:latest\",push=true
 
-# Mirror the built image to zot (the registry Horizon's Helm values would pull from).
+# Mirror the built image to zot (the registry Horizon's Helm values pull from). Both tags are
+# mirrored: the moving <version> tag for humans, and the immutable <version>-b<iid> tag that the
+# fleet values actually pin (second copy is metadata-only — the blobs already exist).
 mirror-zot:
   image:
     name: quay.io/skopeo/stable:latest
@@ -68,9 +74,13 @@ mirror-zot:
   tags:
     - mdapi
   script:
-    - skopeo copy
-        --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
-        --dest-creds "$ZOT_USER:$ZOT_PASSWORD"
-        --dest-tls-verify=false
-        "docker://$CI_REGISTRY_IMAGE:$HORIZON_VERSION"
-        "docker://zot.mdapi.ch/mdapi/horizon-ciphertrust:$HORIZON_VERSION"
+    - |
+      for TAG in "$BUILD_TAG" "$HORIZON_VERSION"; do
+        skopeo copy \
+          --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
+          --dest-creds "$ZOT_USER:$ZOT_PASSWORD" \
+          --dest-tls-verify=false \
+          "docker://$CI_REGISTRY_IMAGE:$TAG" \
+          "docker://zot.mdapi.ch/mdapi/horizon-ciphertrust:$TAG"
+      done
+    - echo "deployable tag -> zot.mdapi.ch/mdapi/horizon-ciphertrust:$BUILD_TAG"
