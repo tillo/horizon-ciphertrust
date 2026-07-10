@@ -30,8 +30,14 @@ import java.util.Optional;
  *
  * <p>A malformed value fails vault initialization with a clear message rather than being silently
  * ignored — a mistyped timeout should never masquerade as the default.
+ *
+ * <p>Registered via {@code META-INF/services} like any third-party {@link VaultSchemeHandler} —
+ * the built-in scheme takes no shortcut through the discovery mechanism.
  */
-final class CipherTrustSchemeHandler implements VaultSchemeHandler {
+public final class CipherTrustSchemeHandler implements VaultSchemeHandler {
+
+  /** Public no-arg constructor for {@link java.util.ServiceLoader}. */
+  public CipherTrustSchemeHandler() {}
 
   @Override
   public String name() {

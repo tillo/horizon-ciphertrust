@@ -6,9 +6,9 @@ master-key scheme**, so Horizon's vault keyset can be wrapped by a key held in
 AWS/GCP KMS or a PKCS#11 HSM — the only schemes Horizon supports out of the box).
 
 It is backed by the standalone extension
-[`ch.tillo.tink:tink-ciphertrust`](https://gitlab.mdapi.ch/mdapi/tink-java-ciphertrust)
-and is the interim/bridge deployment until Horizon supports CipherTrust natively
-(see [`EVERTRUST-REQUEST.md`](EVERTRUST-REQUEST.md)).
+[`ch.tillo.tink:tink-ciphertrust`](https://gitlab.mdapi.ch/mdapi/tink-java-ciphertrust),
+and further schemes can be plugged in without touching this project (see
+"Adding another scheme" below).
 
 ## How it works
 
@@ -79,14 +79,30 @@ The envelope can be tuned per deployment (pod env vars, no rebuild):
 A malformed value fails vault initialization with a clear message instead of
 being silently ignored.
 
-## Adding another scheme
+## Adding another scheme (no rebuild of this project)
 
-The hook dispatches through a small internal seam: `VaultSchemeHandler`
-(supports + build-the-KEK-`Aead`), with all scheme-independent work — reading
-Horizon's keyset configuration, unwrapping, installing the vault primitive,
-logging, error shaping — kept in `HorizonCipherTrustHook`. A new scheme (say
-`vault-transit://`) is one handler class plus one entry in
-`HorizonCipherTrustHook.HANDLERS`.
+The hook dispatches through a `ServiceLoader` SPI: `VaultSchemeHandler`
+(`name()` + `supports(uri)` + `newKekAead(uri, credentialsPath)`). All
+scheme-independent work — reading Horizon's keyset configuration, unwrapping,
+installing the vault primitive, logging, error shaping — stays in
+`HorizonCipherTrustHook`; the built-in `ciphertrust://` handler is itself
+registered through the same mechanism.
+
+To add a scheme (say `vault-transit://`):
+
+1. In your own project, depend on the hook jar and implement
+   `VaultSchemeHandler` (public class, public no-arg constructor).
+2. Register it in
+   `META-INF/services/ch.tillo.tink.ciphertrust.horizon.VaultSchemeHandler`.
+3. Add your jar (plus its runtime deps) to `/horizon/lib` — e.g. a one-line
+   `COPY` in a derived image `FROM` this one.
+
+At boot the hook logs every discovered handler
+(`Discovered N vault scheme handler(s): …`), so what won a URI is never a
+mystery. A provider that fails to load is logged and skipped — a broken
+third-party jar cannot take down the schemes that do load, and if discovery
+itself dies the hook degrades to a no-op (Horizon's built-in schemes are
+never affected).
 
 ## Build
 

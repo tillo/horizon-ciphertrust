@@ -8,8 +8,11 @@ import com.google.crypto.tink.RegistryConfiguration;
 import com.google.crypto.tink.TinkJsonProtoKeysetFormat;
 import com.google.crypto.tink.aead.AeadConfig;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceLoader;
+import java.util.stream.Collectors;
 import models.tink.TinkKeyset;
 import models.tink.TinkKeysetConfiguration;
 import org.slf4j.Logger;
@@ -21,29 +24,72 @@ import scala.Option;
  *
  * <p>A single call to {@link #tryInstall} is injected at the top of the {@code TinkKeyset.$init$}
  * trait initializer (see {@code PatchTinkKeyset}). It returns {@code false} for every master-key
- * URI that no registered {@link VaultSchemeHandler} owns — so Horizon's original dispatch
+ * URI that no discovered {@link VaultSchemeHandler} owns — so Horizon's original dispatch
  * (aws-kms/gcp-kms/pkcs11/plaintext) runs byte-for-byte unchanged — and for an owned URI it
  * reproduces exactly what Horizon does for the built-in wrapped schemes: build a KEK {@link Aead},
  * unwrap the encrypted keyset with it, then set the vault's working {@code aead} to the primitive
  * derived from the unwrapped keyset (not the KEK itself).
  *
- * <p>Vault initialization is on Horizon's boot path, so this class is deliberately loud: it logs
- * the attempt, the outcome and the elapsed time through Horizon's own logging (slf4j/logback). If
- * the KMS is unreachable the underlying client fails within its bounded transport envelope and the
- * error below names the URI and the elapsed time — a boot stuck elsewhere is then immediately
- * distinguishable from a KMS problem.
+ * <p><b>Extensibility.</b> Handlers are discovered through {@link ServiceLoader}: any jar on
+ * Horizon's classpath may contribute schemes by shipping a {@link VaultSchemeHandler}
+ * implementation with a {@code META-INF/services} registration — no change or rebuild of this
+ * hook required. The built-in {@code ciphertrust://} handler is registered the same way. A
+ * provider that fails to load is logged and skipped, so a broken third-party jar cannot take down
+ * the schemes that do load.
  *
- * <p>To add a scheme, implement {@link VaultSchemeHandler} and list it in {@link #HANDLERS}.
+ * <p>Vault initialization is on Horizon's boot path, so this class is deliberately loud: it logs
+ * the discovered handlers once, then for each vault the attempt, the outcome and the elapsed time
+ * through Horizon's own logging (slf4j/logback). If the KMS is unreachable the underlying client
+ * fails within its bounded transport envelope and the error below names the URI and the elapsed
+ * time — a boot stuck elsewhere is then immediately distinguishable from a KMS problem.
  */
 public final class HorizonCipherTrustHook {
 
   private static final Logger log = LoggerFactory.getLogger(HorizonCipherTrustHook.class);
 
-  /** All schemes this hook adds, tried in order; first {@code supports()} match wins. */
-  private static final List<VaultSchemeHandler> HANDLERS =
-      List.of(new CipherTrustSchemeHandler());
+  /**
+   * All discovered scheme handlers, in classpath discovery order; first {@code supports()} match
+   * wins. Loaded once — handler sets don't change at runtime, and vault construction must not pay
+   * a rediscovery on every instance.
+   */
+  private static final List<VaultSchemeHandler> HANDLERS = discoverHandlers();
 
   private HorizonCipherTrustHook() {}
+
+  private static List<VaultSchemeHandler> discoverHandlers() {
+    // This runs in the class initializer: it must never throw. An escaped Throwable here would
+    // surface as ExceptionInInitializerError inside TinkKeyset.$init$ and break EVERY vault
+    // scheme, including the built-in ones this hook promises to leave untouched. Worst case the
+    // list stays partial (or empty — then tryInstall simply always falls through).
+    List<VaultSchemeHandler> handlers = new ArrayList<>();
+    try {
+      // Iterating providers (instead of instances) isolates instantiation failures per provider:
+      // one broken third-party registration must not abort discovery of the others.
+      var providers =
+          ServiceLoader.load(
+                  VaultSchemeHandler.class, HorizonCipherTrustHook.class.getClassLoader())
+              .stream()
+              .iterator();
+      while (providers.hasNext()) {
+        ServiceLoader.Provider<VaultSchemeHandler> provider = providers.next();
+        try {
+          handlers.add(provider.get());
+        } catch (Throwable t) {
+          log.error(
+              "Skipping vault scheme handler {} — provider failed to load",
+              provider.type().getName(),
+              t);
+        }
+      }
+    } catch (Throwable t) {
+      log.error("Vault scheme handler discovery aborted after {} handler(s)", handlers.size(), t);
+    }
+    log.info(
+        "Discovered {} vault scheme handler(s): {}",
+        handlers.size(),
+        handlers.stream().map(VaultSchemeHandler::name).collect(Collectors.joining(", ")));
+    return handlers;
+  }
 
   /**
    * Installs the vault keyset when the configured master-key URI belongs to one of this hook's
