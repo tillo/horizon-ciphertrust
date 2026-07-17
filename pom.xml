@@ -23,19 +23,15 @@
     <tink.version>1.21.0</tink.version>
   </properties>
 
-  <repositories>
-    <repository>
-      <id>gitlab-tink-ciphertrust</id>
-      <url>https://gitlab.mdapi.ch/api/v4/projects/212/packages/maven</url>
-    </repository>
-  </repositories>
-
   <dependencies>
-    <!-- The extension itself; shipped into /horizon/lib in the image. -->
+    <!-- The extension itself; shipped into /horizon/lib in the image. Resolved from Maven
+         Central; CI additionally consults the upstream GitLab package registry through a
+         profile in ci_settings.xml (activated by CI_JOB_TOKEN), so the pom itself carries
+         only the public identity. -->
     <dependency>
       <groupId>ch.tillo.tink</groupId>
       <artifactId>tink-ciphertrust</artifactId>
-      <version>0.2.0-SNAPSHOT</version>
+      <version>0.2.0</version>
     </dependency>
 
     <!-- Present in the Horizon image already — compile-only here. -->

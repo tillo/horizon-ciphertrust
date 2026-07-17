@@ -6,7 +6,8 @@ master-key scheme**, so Horizon's vault keyset can be wrapped by a key held in
 AWS/GCP KMS or a PKCS#11 HSM — the only schemes Horizon supports out of the box).
 
 It is backed by the standalone extension
-[`ch.tillo.tink:tink-ciphertrust`](https://gitlab.mdapi.ch/mdapi/tink-java-ciphertrust),
+[`ch.tillo.tink:tink-ciphertrust`](https://github.com/tillo/tink-java-ciphertrust)
+(on Maven Central as `ch.tillo.tink:tink-ciphertrust`),
 and further schemes can be plugged in without touching this project (see
 "Adding another scheme" below).
 
@@ -106,24 +107,24 @@ never affected).
 
 ## Build
 
-CI builds and pushes the image (then mirrors it to `zot.mdapi.ch`). Every
-build gets two tags: the moving `<HORIZON_VERSION>` and an **immutable**
-`<HORIZON_VERSION>-b<pipeline iid>`. Deployments pin the immutable tag, so a
-rollout is always an explicit tag bump and a rollback is the previous tag —
-rebuilding the same Horizon version can never silently change what a cluster
-runs. It needs:
+CI builds and pushes the image (then mirrors it to the registry the Helm
+values pull from). Every build gets two tags: the moving `<HORIZON_VERSION>`
+and an **immutable** `<HORIZON_VERSION>-b<pipeline iid>`. Deployments pin the
+immutable tag, so a rollout is always an explicit tag bump and a rollback is
+the previous tag — rebuilding the same Horizon version can never silently
+change what a cluster runs. It needs:
 
 - `EVERTRUST_REGISTRY_USER` / `EVERTRUST_REGISTRY_PASSWORD` CI/CD variables to
   pull `registry.evertrust.io/horizon:$HORIZON_VERSION`.
-- Read access to project 212's Maven registry (via `CI_JOB_TOKEN`, passed to the
-  in-image Maven build as a buildkit secret).
+- Nothing else: `ch.tillo.tink:tink-ciphertrust` resolves from Maven Central.
+  (CI additionally passes `CI_JOB_TOKEN` as a buildkit secret, which activates
+  a profile in `ci_settings.xml` consulting the extension's own GitLab package
+  registry — only needed to build against unreleased versions.)
 
-Local build:
+Local build (credentials for `registry.evertrust.io` required):
 
 ```bash
-CI_JOB_TOKEN=<PAT> docker build \
-  --secret id=ci_job_token,env=CI_JOB_TOKEN \
-  --build-arg HORIZON_VERSION=2.10.2 -t horizon-ciphertrust:2.10.2 .
+docker build --build-arg HORIZON_VERSION=2.10.2 -t horizon-ciphertrust:2.10.2 .
 ```
 
 The build fails if the patch does not apply (a `javap | grep tryInstall` gate).

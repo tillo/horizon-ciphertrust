@@ -2,8 +2,11 @@
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
-  <!-- Reads ch.tillo.tink:tink-ciphertrust from project 212's GitLab Maven registry.
-       CI_JOB_TOKEN is injected by GitLab CI; for local builds set it to a personal access token. -->
+  <!-- CI-only plumbing. The pom resolves ch.tillo.tink:tink-ciphertrust from Maven Central;
+       this profile (active only when CI_JOB_TOKEN is set — GitLab CI, or a local build with a
+       personal access token) additionally consults the extension's own GitLab package registry
+       so CI can build against not-yet-released versions. Without the token the profile is
+       inert and the build is Central-only. -->
   <servers>
     <server>
       <id>gitlab-tink-ciphertrust</id>
@@ -17,4 +20,20 @@
       </configuration>
     </server>
   </servers>
+  <profiles>
+    <profile>
+      <id>gitlab-registry</id>
+      <activation>
+        <property>
+          <name>env.CI_JOB_TOKEN</name>
+        </property>
+      </activation>
+      <repositories>
+        <repository>
+          <id>gitlab-tink-ciphertrust</id>
+          <url>https://gitlab.mdapi.ch/api/v4/projects/212/packages/maven</url>
+        </repository>
+      </repositories>
+    </profile>
+  </profiles>
 </settings>

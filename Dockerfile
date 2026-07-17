@@ -28,7 +28,8 @@ RUN set -eux; \
     cp "$HJAR" /build/horizon.jar
 COPY ci_settings.xml pom.xml ./
 COPY src ./src
-# CI_JOB_TOKEN (buildkit secret) lets Maven read ch.tillo.tink:tink-ciphertrust from project 212.
+# The optional CI_JOB_TOKEN buildkit secret lets Maven also consult the extension's GitLab package
+# registry (for unreleased versions); without it the dependency resolves from Maven Central.
 RUN --mount=type=secret,id=ci_job_token,env=CI_JOB_TOKEN \
     mvn -B --no-transfer-progress -s ci_settings.xml -Dhorizon.jar=/build/horizon.jar package
 # Patch $init$, then fail the build unless the patched class actually carries the hook call.
