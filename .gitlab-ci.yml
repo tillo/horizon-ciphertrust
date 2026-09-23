@@ -73,6 +73,12 @@ mirror-zot:
   stage: mirror
   tags:
     - mdapi
+  # Publishing a floating tag is a default-branch action. A branch pipeline
+  # builds :SHA only (see mdapi/ci-templates build.yml) and must not move
+  # :latest anywhere, zot included. Scheduled 4-hourly rebuilds still match:
+  # CI_COMMIT_BRANCH is set for a schedule running on the default branch.
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   script:
     - |
       for TAG in "$BUILD_TAG" "$HORIZON_VERSION"; do
