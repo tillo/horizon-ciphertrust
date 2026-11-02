@@ -2,9 +2,13 @@ include:
   - project: mdapi/ci-templates
     file: /secret-scan.yml
     ref: main
+  - project: mdapi/ci-templates
+    file: /scan.yml
+    ref: main
 
 stages:
   - build
+  - scan
   - mirror
 
 secret-scan:
@@ -61,7 +65,7 @@ buildkit:
         --export-cache type=registry,ref=$CACHE_IMAGE \
         --import-cache type=registry,ref=$CACHE_IMAGE \
         --opt platform=linux/amd64 \
-        --output type=image,\"name=$CI_REGISTRY_IMAGE:$HORIZON_VERSION,$CI_REGISTRY_IMAGE:$BUILD_TAG,$CI_REGISTRY_IMAGE:latest\",push=true
+        --output type=image,\"name=$CI_REGISTRY_IMAGE:$HORIZON_VERSION,$CI_REGISTRY_IMAGE:$BUILD_TAG,$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA,$CI_REGISTRY_IMAGE:latest\",push=true
 
 # Mirror the built image to zot (the registry Horizon's Helm values pull from). Both tags are
 # mirrored: the moving <version> tag for humans, and the immutable <version>-b<iid> tag that the
@@ -90,3 +94,9 @@ mirror-zot:
           "docker://zot.mdapi.ch/mdapi/horizon-ciphertrust:$TAG"
       done
     - echo "deployable tag -> zot.mdapi.ch/mdapi/horizon-ciphertrust:$BUILD_TAG"
+
+# CVE scan of the image this pipeline pushed (:$CI_COMMIT_SHORT_SHA) via the shared job in
+# mdapi/ci-templates (scan.yml). The grype curator and DefectDojo both read grype-report.json
+# from the newest successful job named `scan`; without one, this image was invisible to both.
+scan:
+  extends: .grype-scan
