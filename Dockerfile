@@ -16,7 +16,7 @@ ARG HORIZON_VERSION=2.10.2
 FROM ${HORIZON_IMAGE}:${HORIZON_VERSION} AS horizon
 
 # ---- stage 2: build the hook jar, patch TinkKeyset, verify ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.10-eclipse-temurin-21 AS build
 ARG HORIZON_VERSION
 WORKDIR /build
 # The glob matches both the app jar and its -assets sibling; select the one that actually
