@@ -55,7 +55,9 @@
         "patch"
       ],
       "matchPackageNames": [
-        "__none__"
+        "__none__",
+        "maven",
+        "registry.evertrust.io/horizon"
       ],
       "automerge": true,
       "labels": [
@@ -70,7 +72,9 @@
         "digest"
       ],
       "matchPackageNames": [
-        "__none__"
+        "__none__",
+        "maven",
+        "registry.evertrust.io/horizon"
       ],
       "automerge": true,
       "labels": [
