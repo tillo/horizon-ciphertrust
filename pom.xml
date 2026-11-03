@@ -19,7 +19,8 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>11</maven.compiler.release>
-    <!-- Must match the tink version bundled in the target Horizon image (2.10.x = 1.21.0). -->
+    <!-- Must match the tink bundled in the target Horizon image (2.10.x = 1.21.0, 2.12.0 = 1.24.0);
+         check-provided-jars.sh fails the image build otherwise. -->
     <tink.version>1.21.0</tink.version>
   </properties>
 
@@ -34,7 +35,8 @@
       <version>0.2.0</version>
     </dependency>
 
-    <!-- Present in the Horizon image already — compile-only here. -->
+    <!-- Present in the Horizon image already — compile-only here, and each must be the exact
+         version the image ships (check-provided-jars.sh, run by the Dockerfile). -->
     <dependency>
       <groupId>com.google.crypto.tink</groupId>
       <artifactId>tink</artifactId>
@@ -44,7 +46,7 @@
     <dependency>
       <groupId>org.scala-lang</groupId>
       <artifactId>scala-library</artifactId>
-      <version>2.13.14</version>
+      <version>2.13.18</version>
       <scope>provided</scope>
     </dependency>
     <!-- Horizon ships slf4j-api 2.0.x (logback backend); the hook logs through it so vault
@@ -68,7 +70,8 @@
     <dependency>
       <groupId>fr.evertrust</groupId>
       <artifactId>horizon</artifactId>
-      <version>2.10.2</version>
+      <!-- = the Dockerfile's HORIZON_VERSION, passed as -Dhorizon.version: never a second copy. -->
+      <version>${horizon.version}</version>
       <scope>system</scope>
       <systemPath>${horizon.jar}</systemPath>
     </dependency>

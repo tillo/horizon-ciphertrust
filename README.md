@@ -44,7 +44,11 @@ This image therefore makes two additive changes at **build time**:
    patched class deterministically shadows the vendor one — no jar is rewritten.
 
 The patch is re-derived from whatever `TinkKeyset` the base image ships, so a
-Horizon upgrade is just a `HORIZON_VERSION` bump + rebuild.
+Horizon upgrade is a `HORIZON_VERSION` bump + rebuild. `HORIZON_VERSION` lives in
+ONE place, the Dockerfile's `ARG` (CI reads it from there for the tags, Renovate
+opens the bump MRs). The pom's `provided` jars must be the versions the image
+ships; `check-provided-jars.sh` fails the build until they are (tested by
+`tests/check-provided-jars.test.sh`, the CI `test` job).
 
 ## Key URI and credentials
 
@@ -112,7 +116,8 @@ values pull from). Every build gets two tags: the moving `<HORIZON_VERSION>`
 and an **immutable** `<HORIZON_VERSION>-b<pipeline iid>`. Deployments pin the
 immutable tag, so a rollout is always an explicit tag bump and a rollback is
 the previous tag — rebuilding the same Horizon version can never silently
-change what a cluster runs. It needs:
+change what a cluster runs. Only the default branch publishes those tags; a
+branch (a Renovate MR) builds and scans `:<sha>` only. It needs:
 
 - `EVERTRUST_REGISTRY_USER` / `EVERTRUST_REGISTRY_PASSWORD` CI/CD variables to
   pull `registry.evertrust.io/horizon:$HORIZON_VERSION`.
