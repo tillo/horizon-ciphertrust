@@ -8,6 +8,8 @@
 # stage is COPY-only.
 
 ARG HORIZON_IMAGE=registry.evertrust.io/horizon
+# The ONE place the Horizon version lives: CI reads it from here for the image tags, and
+# Renovate moves it (fleet's renovate job carries the registry.evertrust.io login).
 ARG HORIZON_VERSION=2.10.2
 
 # ---- stage 1: the target Horizon image ----
@@ -15,6 +17,7 @@ FROM ${HORIZON_IMAGE}:${HORIZON_VERSION} AS horizon
 
 # ---- stage 2: build the hook jar, patch TinkKeyset, verify ----
 FROM maven:3.9-eclipse-temurin-21 AS build
+ARG HORIZON_VERSION
 WORKDIR /build
 # The glob matches both the app jar and its -assets sibling; select the one that actually
 # contains models.tink.TinkKeyset (content-checked, not name-guessed).
@@ -31,7 +34,18 @@ COPY src ./src
 # The optional CI_JOB_TOKEN buildkit secret lets Maven also consult the extension's GitLab package
 # registry (for unreleased versions); without it the dependency resolves from Maven Central.
 RUN --mount=type=secret,id=ci_job_token,env=CI_JOB_TOKEN \
-    mvn -B --no-transfer-progress -s ci_settings.xml -Dhorizon.jar=/build/horizon.jar package
+    mvn -B --no-transfer-progress -s ci_settings.xml -Dhorizon.jar=/build/horizon.jar \
+        -Dhorizon.version="${HORIZON_VERSION}" package
+# The provided jars are compiled against, never shipped: Horizon's own copy is what runs. Fail
+# the build unless pom.xml names exactly the versions this image ships in /horizon/lib, so a
+# HORIZON_VERSION bump that moves one of them cannot build until the pom follows.
+COPY --from=horizon /horizon/lib/ /build/horizon-lib/
+COPY check-provided-jars.sh ./
+RUN --mount=type=secret,id=ci_job_token,env=CI_JOB_TOKEN \
+    mvn -B -q --no-transfer-progress -s ci_settings.xml -Dhorizon.jar=/build/horizon.jar \
+        -Dhorizon.version="${HORIZON_VERSION}" dependency:list -DincludeScope=provided \
+        -DexcludeTransitive=true -DoutputFile=/build/provided.txt \
+ && sh check-provided-jars.sh /build/provided.txt /build/horizon-lib
 # Patch $init$, then fail the build unless the patched class actually carries the hook call.
 RUN set -eux; \
     mkdir -p /build/patch/orig; \

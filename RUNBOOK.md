@@ -94,8 +94,9 @@ Fast and total, because Step 1 preserved the key material:
 - Availability: CipherTrust Manager is now on Horizon's boot path. If CM is
   down, `horizon-0` cannot start. CM Community Edition is single-node — weigh
   this before cutover; keep the plaintext-keyset rollback ready.
-- On every Horizon upgrade: bump `HORIZON_VERSION`, rebuild the image (re-derives
-  the patch), and re-run Step 0 on a copy before touching prod.
+- On every Horizon upgrade: bump `HORIZON_VERSION` (the Dockerfile `ARG`; Renovate
+  opens the MR), align the pom's provided jars if the build says so, rebuild the
+  image (re-derives the patch), and re-run Step 0 on a copy before touching prod.
 - Deployments pin the **immutable** tag (`<version>-b<pipeline iid>`, printed at
   the end of the CI mirror job). Rolling out a rebuild = bump the tag in the
   Helm values; rolling back = restore the previous tag. The moving

@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Pins INSIDE the horizon-ciphertrust image (infra-ik4p.1): the maven build image, the build plugins, javassist and our own tink-ciphertrust. Runs from mdapi/fleet's `renovate` job, which lists this repo in RENOVATE_REPOSITORIES. The readers (Dockerfile FROM, maven, the `# renovate:` ARG regex), the house core, OSV alerts and the dependency-proxy alias come from the shared preset local>mdapi/renovate-config:image-repo; do not set enabledManagers or postUpgradeTasks here, since a repo value REPLACES the preset's. MR-only baseline: nothing in this repo automerges until a graduation tick says so.",
+  "description": "Pins INSIDE the horizon-ciphertrust image (infra-ik4p.1): the Horizon base image (HORIZON_VERSION), the maven build image, the build plugins, javassist and our own tink-ciphertrust. Runs from mdapi/fleet's `renovate` job, which lists this repo in RENOVATE_REPOSITORIES. The readers (Dockerfile FROM, maven, the `# renovate:` ARG regex), the house core, OSV alerts and the dependency-proxy alias come from the shared preset local>mdapi/renovate-config:image-repo; do not set enabledManagers or postUpgradeTasks here, since a repo value REPLACES the preset's. MR-only baseline: nothing in this repo automerges until a graduation tick says so.",
   "extends": [
     "local>mdapi/renovate-config:image-repo"
   ],
@@ -17,14 +17,19 @@
   ],
   "packageRules": [
     {
-      "description": "The Horizon base is registry.evertrust.io, which answers 401 without credentials, and mdapi/fleet's renovate job has none for it. HORIZON_VERSION moves by hand until it does.",
+      "description": "The Horizon base (registry.evertrust.io, read with the Evertrust login on mdapi/fleet's renovate job). A merge builds a new image; it reaches no cluster until fleet's Horizon values pin the new immutable tag, and that bump goes with the Evertrust chart's appVersion. The provided jars stay pinned to what the image ships: the image build fails (check-provided-jars.sh) until pom.xml follows, so fix them in THIS branch.",
       "matchDepNames": [
         "registry.evertrust.io/horizon"
       ],
-      "enabled": false
+      "prBodyNotes": [
+        "---",
+        "#### Horizon base bump: what has to move with it",
+        "- If the `buildkit` job fails in `check-provided-jars.sh`, the new image ships other versions of the provided jars (tink, scala-library, slf4j-api): set them in `pom.xml` on THIS branch to what the error lists. Horizon 2.12.0, for one, moved tink 1.21.0 → 1.24.0 and slf4j-api 2.0.18 → 2.0.20.",
+        "- Merging only builds `<version>-b<iid>`. Rolling it out is the fleet Horizon values tag bump, together with the Evertrust chart's appVersion; re-run the RUNBOOK's Step 0 on a copy first."
+      ]
     },
     {
-      "description": "The provided and system jars (tink, scala-library, slf4j, horizon) must match what the target Horizon image ships, NOT the newest upstream release: they move with HORIZON_VERSION, never on their own.",
+      "description": "The provided and system jars (tink, scala-library, slf4j, horizon) must match what the target Horizon image ships, NOT the newest upstream release: they move with HORIZON_VERSION, never on their own. check-provided-jars.sh enforces it at image build; the system `horizon` jar's version is HORIZON_VERSION itself (-Dhorizon.version).",
       "matchManagers": [
         "maven"
       ],
