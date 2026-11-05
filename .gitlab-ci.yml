@@ -49,6 +49,12 @@ buildkit:
   stage: build
   tags:
     - mdapi
+  # In the MERGE-REQUEST pipeline too: that is the pipeline GitLab gates a merge on, and a job
+  # without `rules:` never runs there. Without this the Horizon 2.12.0 bump (!9) merged green
+  # while its branch pipeline failed check-provided-jars.sh, and main's scheduled rebuild then
+  # failed every 4h from 2026-11-03 17:33 (GitlabImageBuilderScheduledBuildFailing).
+  rules:
+    - when: on_success
   variables:
     BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
     CACHE_IMAGE: $CI_REGISTRY_IMAGE:cache
