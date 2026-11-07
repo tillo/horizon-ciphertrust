@@ -1,5 +1,8 @@
 include:
   - project: mdapi/ci-templates
+    file: /buildkit-before-script.yml   # .zot-target: where this pipeline publishes
+    ref: main
+  - project: mdapi/ci-templates
     file: /secret-scan.yml
     ref: main
   - project: mdapi/ci-templates
@@ -9,7 +12,6 @@ include:
 stages:
   - build
   - scan
-  - mirror
 
 secret-scan:
   extends: .secret-scan
@@ -57,12 +59,20 @@ buildkit:
     - when: on_success
   variables:
     BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
-    CACHE_IMAGE: $CI_REGISTRY_IMAGE:cache
   before_script:
+    # GitLab's registry is read-only (infra-8f4.54): publish to zot only.
+    # .zot-target picks mdapi/horizon-ciphertrust (main, ci-push) or
+    # mdapi-dev/horizon-ciphertrust (any other ref, dev-push).
+    - !reference [.zot-target, script]
+    - test -n "$ZOT_IMAGE"
+    - CACHE_IMAGE="$ZOT_IMAGE:cache"
     - mkdir -p ~/.docker
     - |
       echo "{
         \"auths\": {
+          \"zot.mdapi.ch\": {
+            \"auth\": \"$(printf "%s:%s" "${ZOT_PUSH_USER}" "${ZOT_PUSH_PASSWORD}" | base64 | tr -d '\n')\"
+          },
           \"${CI_REGISTRY}\": {
             \"auth\": \"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"
           },
@@ -80,9 +90,9 @@ buildkit:
     # Only the default branch publishes the version, immutable and :latest tags; a branch
     # (a Renovate MR) builds and scans :SHA only, like mdapi/ci-templates build.yml.
     - |
-      TAGS="$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      TAGS="$ZOT_IMAGE:$CI_COMMIT_SHORT_SHA"
       if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        TAGS="$TAGS,$CI_REGISTRY_IMAGE:$HORIZON_VERSION,$CI_REGISTRY_IMAGE:$BUILD_TAG,$CI_REGISTRY_IMAGE:latest"
+        TAGS="$TAGS,$ZOT_IMAGE:$HORIZON_VERSION,$ZOT_IMAGE:$BUILD_TAG,$ZOT_IMAGE:latest"
       fi
     - |
       buildctl-daemonless.sh build \
@@ -94,35 +104,6 @@ buildkit:
         --import-cache type=registry,ref=$CACHE_IMAGE \
         --opt platform=linux/amd64 \
         --output type=image,\"name=$TAGS\",push=true
-
-# Mirror the built image to zot (the registry Horizon's Helm values pull from). Both tags are
-# mirrored: the moving <version> tag for humans, and the immutable <version>-b<iid> tag that the
-# fleet values actually pin (second copy is metadata-only — the blobs already exist).
-mirror-zot:
-  image:
-    name: quay.io/skopeo/stable:latest
-    entrypoint: [""]
-  stage: mirror
-  tags:
-    - mdapi
-  # Publishing a floating tag is a default-branch action. A branch pipeline
-  # builds :SHA only (see mdapi/ci-templates build.yml) and must not move
-  # :latest anywhere, zot included. Scheduled 4-hourly rebuilds still match:
-  # CI_COMMIT_BRANCH is set for a schedule running on the default branch.
-  rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-  script:
-    - !reference [.horizon-version, script]
-    - |
-      for TAG in "$BUILD_TAG" "$HORIZON_VERSION"; do
-        skopeo copy \
-          --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
-          --dest-creds "$ZOT_USER:$ZOT_PASSWORD" \
-          --dest-tls-verify=false \
-          "docker://$CI_REGISTRY_IMAGE:$TAG" \
-          "docker://zot.mdapi.ch/mdapi/horizon-ciphertrust:$TAG"
-      done
-    - echo "deployable tag -> zot.mdapi.ch/mdapi/horizon-ciphertrust:$BUILD_TAG"
 
 # CVE scan of the image this pipeline pushed (:$CI_COMMIT_SHORT_SHA) via the shared job in
 # mdapi/ci-templates (scan.yml). The grype curator and DefectDojo both read grype-report.json
