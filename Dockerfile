@@ -10,7 +10,7 @@
 ARG HORIZON_IMAGE=registry.evertrust.io/horizon
 # The ONE place the Horizon version lives: CI reads it from here for the image tags, and
 # Renovate moves it (fleet's renovate job carries the registry.evertrust.io login).
-ARG HORIZON_VERSION=2.12.1
+ARG HORIZON_VERSION=2.12.2
 
 # ---- stage 1: the target Horizon image ----
 FROM ${HORIZON_IMAGE}:${HORIZON_VERSION} AS horizon
